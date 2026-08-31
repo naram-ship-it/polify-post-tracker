@@ -10,11 +10,6 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-enum Platform {
-  X
-  LINKEDIN
-}
-
 // Where a post record came from. Manual entry today; X_API is reserved for
 // the future automatic-pull feature so it can write into this same table
 // without a schema change.
@@ -35,28 +30,69 @@ model TeamMember {
   linkedinUrl String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
+  // Overrides AppSettings.defaultWeeklyTarget for this person. Null = use
+  // the default.
+  weeklyTarget Int?
 
-  posts    Post[]
-  comments Comment[]
+  posts            Post[]
+  comments         Comment[]
+  questCompletions QuestCompletion[]
 
   @@unique([xHandle])
+}
+
+// A manually-defined challenge (e.g. "post on 3 different days this week").
+// No automatic verification — team members self-report via QuestCompletion,
+// same trust model as the rest of the app (no real login).
+model Quest {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  completions QuestCompletion[]
+}
+
+model QuestCompletion {
+  id          String     @id @default(cuid())
+  quest       Quest      @relation(fields: [questId], references: [id], onDelete: Cascade)
+  questId     String
+  member      TeamMember @relation(fields: [memberId], references: [id])
+  memberId    String
+  completedAt DateTime   @default(now())
+
+  @@unique([questId, memberId])
 }
 
 model Post {
   id        String     @id @default(cuid())
   member    TeamMember @relation(fields: [memberId], references: [id])
   memberId  String
-  platform  Platform
   url       String
   postedAt  DateTime
   note      String?
+  // Post text pulled automatically from the platform (e.g. X's oEmbed) at
+  // log time, distinct from `note` which is the logger's own caption.
+  previewText String?
   source    PostSource @default(MANUAL)
   createdAt DateTime   @default(now())
+  // Manual highlight, set by anyone from the feed. At most one post is
+  // ever true at a time (enforced in the action, not the schema).
+  isPostOfWeek Boolean @default(false)
 
   comments Comment[]
 
   @@index([postedAt])
   @@index([memberId])
+}
+
+// Single-row table for app-wide settings adjustable at runtime (no redeploy
+// needed).
+model AppSettings {
+  id                  Int @id @default(1)
+  // Weekly post target used for anyone without their own TeamMember.weeklyTarget.
+  defaultWeeklyTarget Int @default(1)
 }
 
 model Comment {

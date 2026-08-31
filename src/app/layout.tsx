@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Polify Post Tracker",
-  description: "Track and celebrate the team's Polify posts on X and LinkedIn.",
+  description: "Track and celebrate the team's Polify posts on X.",
 };
 
 // Every page reads shared, frequently-changing data (team roster, posts),

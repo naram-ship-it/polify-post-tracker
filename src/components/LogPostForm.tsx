@@ -24,7 +24,7 @@ export function LogPostForm({ members }: { members: MemberOption[] }) {
     if (state.ok) {
       router.push("/");
     }
-  }, [state.ok, router]);
+  }, [state, router]);
 
   return (
     <form action={action} className="space-y-4">
@@ -47,25 +47,11 @@ export function LogPostForm({ members }: { members: MemberOption[] }) {
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium">Platform</label>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-1.5 text-sm">
-            <input type="radio" name="platform" value="X" defaultChecked required />
-            X
-          </label>
-          <label className="flex items-center gap-1.5 text-sm">
-            <input type="radio" name="platform" value="LINKEDIN" required />
-            LinkedIn
-          </label>
-        </div>
-      </div>
-
-      <div>
         <label className="mb-1 block text-sm font-medium">Post URL</label>
         <input
           type="url"
           name="url"
-          placeholder="https://x.com/... or https://www.linkedin.com/..."
+          placeholder="https://x.com/..."
           required
           className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
         />

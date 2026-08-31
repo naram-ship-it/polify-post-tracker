@@ -20,3 +20,7 @@ export async function addComment(input: NewCommentInput) {
     },
   });
 }
+
+export async function countEngagementForRange(start: Date, end: Date): Promise<number> {
+  return prisma.comment.count({ where: { createdAt: { gte: start, lte: end } } });
+}

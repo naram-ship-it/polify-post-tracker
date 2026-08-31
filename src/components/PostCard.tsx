@@ -2,8 +2,17 @@
 
 import { useActionState, useState } from "react";
 import type { Prisma } from "@prisma/client";
-import { addReactionAction, addCommentAction, type AddCommentState } from "@/app/actions";
+import {
+  addReactionAction,
+  addCommentAction,
+  deletePostAction,
+  setPostOfWeekAction,
+  type AddCommentState,
+} from "@/app/actions";
 import { useIdentity } from "@/components/identity";
+import { EditPostForm } from "@/components/EditPostForm";
+import type { MemberOption } from "@/components/Chrome";
+import { avatarColor } from "@/lib/avatarColor";
 
 export type FeedPost = Prisma.PostGetPayload<{
   include: {
@@ -14,21 +23,22 @@ export type FeedPost = Prisma.PostGetPayload<{
 
 const QUICK_EMOJIS = ["👍", "🔥", "❤️", "👀"];
 
-function platformLabel(platform: string) {
-  return platform === "X" ? "X" : "LinkedIn";
-}
-
 function formatDate(d: Date | string) {
-  return new Date(d).toLocaleDateString(undefined, {
+  // Fixed locale (not `undefined`) so server and client render identical
+  // text regardless of the host OS's or browser's locale — otherwise this
+  // mismatches and triggers a hydration error.
+  return new Date(d).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
 }
 
-export function PostCard({ post }: { post: FeedPost }) {
+export function PostCard({ post, members }: { post: FeedPost; members: MemberOption[] }) {
   const { memberId } = useIdentity();
   const [showCommentBox, setShowCommentBox] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [commentState, commentAction, commentPending] = useActionState<
     AddCommentState,
     FormData
@@ -51,20 +61,79 @@ export function PostCard({ post }: { post: FeedPost }) {
     await addReactionAction(post.id, memberId, emoji);
   }
 
+  async function handleDelete() {
+    if (!confirm("Delete this post? This can't be undone.")) return;
+    setDeleting(true);
+    await deletePostAction(post.id);
+  }
+
+  async function togglePostOfWeek() {
+    await setPostOfWeekAction(post.id);
+  }
+
+  if (isEditing) {
+    return (
+      <article className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <EditPostForm post={post} members={members} onDone={() => setIsEditing(false)} />
+      </article>
+    );
+  }
+
   return (
-    <article className="rounded-lg border border-border bg-card p-4">
+    <article
+      className={`rounded-2xl border p-4 shadow-sm ${
+        post.isPostOfWeek ? "border-amber-300 bg-amber-50" : "border-border bg-card"
+      }`}
+    >
+      {post.isPostOfWeek && (
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-700">
+          ⭐ Post of the Week
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-semibold">{post.member.name}</span>
-            <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent">
-              {platformLabel(post.platform)}
+            <span
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-[11px] font-bold text-white"
+              style={{ backgroundColor: avatarColor(post.member.name) }}
+            >
+              {post.member.name.charAt(0).toUpperCase()}
             </span>
+            <span className="font-semibold">{post.member.name}</span>
             <span className="text-muted">{formatDate(post.postedAt)}</span>
           </div>
+          {post.previewText && (
+            <p className="mt-1.5 border-l-2 border-border pl-2 text-sm italic text-foreground/80">
+              “{post.previewText}”
+            </p>
+          )}
           {post.note && (
             <p className="mt-1.5 text-sm text-foreground/90">{post.note}</p>
           )}
+          <div className="mt-1.5 flex gap-3 text-xs">
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              className="text-accent underline"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-red-600 underline disabled:opacity-50"
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+            <button
+              type="button"
+              onClick={togglePostOfWeek}
+              className="text-amber-700 underline"
+            >
+              {post.isPostOfWeek ? "Unmark Post of the Week" : "Mark as Post of the Week"}
+            </button>
+          </div>
         </div>
         <a
           href={post.url}
