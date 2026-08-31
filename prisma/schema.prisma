@@ -1,0 +1,74 @@
+// Prisma schema for Polify Post Tracker
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Platform {
+  X
+  LINKEDIN
+}
+
+// Where a post record came from. Manual entry today; X_API is reserved for
+// the future automatic-pull feature so it can write into this same table
+// without a schema change.
+enum PostSource {
+  MANUAL
+  X_API
+}
+
+enum ReactionType {
+  EMOJI
+  TEXT
+}
+
+model TeamMember {
+  id          String   @id @default(cuid())
+  name        String
+  xHandle     String?
+  linkedinUrl String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  posts    Post[]
+  comments Comment[]
+
+  @@unique([xHandle])
+}
+
+model Post {
+  id        String     @id @default(cuid())
+  member    TeamMember @relation(fields: [memberId], references: [id])
+  memberId  String
+  platform  Platform
+  url       String
+  postedAt  DateTime
+  note      String?
+  source    PostSource @default(MANUAL)
+  createdAt DateTime   @default(now())
+
+  comments Comment[]
+
+  @@index([postedAt])
+  @@index([memberId])
+}
+
+model Comment {
+  id        String       @id @default(cuid())
+  post      Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  member    TeamMember   @relation(fields: [memberId], references: [id])
+  memberId  String
+  type      ReactionType
+  emoji     String?
+  text      String?
+  createdAt DateTime     @default(now())
+
+  @@index([postId])
+}
