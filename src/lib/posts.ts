@@ -184,6 +184,57 @@ export async function getTeamWeeklyTotals(weeks: number): Promise<WeeklyTeamTota
   return result;
 }
 
+// Each active member's most recent posts (up to `limit`), for the personal
+// "Your recent posts" dashboard section. One query for the whole team
+// rather than one per member.
+export async function getRecentPostsByMemberMap(
+  limit: number
+): Promise<Map<string, TopPost[]>> {
+  const posts = await prisma.post.findMany({
+    include: { member: true, _count: { select: { comments: true } } },
+    orderBy: { postedAt: "desc" },
+    take: 200,
+  });
+
+  const byMember = new Map<string, TopPost[]>();
+  for (const p of posts) {
+    const list = byMember.get(p.memberId) ?? [];
+    if (list.length >= limit) continue;
+    list.push({
+      id: p.id,
+      memberName: p.member.name,
+      url: p.url,
+      postedAt: p.postedAt,
+      engagement: p._count.comments,
+    });
+    byMember.set(p.memberId, list);
+  }
+  return byMember;
+}
+
+// Which days (Mon..Sun) each member posted on, for the current week — the
+// day-by-day tracker in "Your weekly progress".
+export async function getDaysPostedThisWeekByMember(): Promise<Map<string, boolean[]>> {
+  const start = startOfWeek(new Date());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+
+  const posts = await prisma.post.findMany({
+    where: { postedAt: { gte: start, lt: end } },
+    select: { memberId: true, postedAt: true },
+  });
+
+  const byMember = new Map<string, boolean[]>();
+  for (const p of posts) {
+    const days = byMember.get(p.memberId) ?? Array(7).fill(false);
+    const jsDay = new Date(p.postedAt).getDay();
+    const dayIndex = jsDay === 0 ? 6 : jsDay - 1; // 0 = Monday .. 6 = Sunday
+    days[dayIndex] = true;
+    byMember.set(p.memberId, days);
+  }
+  return byMember;
+}
+
 export const TIME_BUCKET_LABELS = ["12a", "3a", "6a", "9a", "12p", "3p", "6p", "9p"];
 
 // 7 (Mon..Sun) x 8 (3-hour bucket) grid of post counts, all-time — for the
