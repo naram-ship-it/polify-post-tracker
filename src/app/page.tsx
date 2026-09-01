@@ -33,7 +33,7 @@ export default async function FeedPage() {
 
       <StreakBar streaks={streaks} />
 
-      <QuickAddBar />
+      <QuickAddBar members={memberOptions} />
 
       {posts.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted">

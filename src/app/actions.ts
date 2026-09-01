@@ -281,3 +281,69 @@ export async function toggleQuestCompletionAction(questId: string, memberId: str
   await toggleQuestCompletion(questId, memberId);
   revalidatePath("/leaderboard");
 }
+
+export type MemberFormState = { error?: string; ok?: boolean };
+
+function parseMemberFields(formData: FormData) {
+  const name = String(formData.get("name") || "").trim();
+  const xHandle = String(formData.get("xHandle") || "").trim().replace(/^@/, "");
+
+  if (!name) return { error: "Name is required." } as const;
+  if (name.length > 60) return { error: "Keep the name under 60 characters." } as const;
+
+  return { name, xHandle: xHandle || null } as const;
+}
+
+export async function createMemberAction(
+  _prev: MemberFormState,
+  formData: FormData
+): Promise<MemberFormState> {
+  const parsed = parseMemberFields(formData);
+  if ("error" in parsed) return parsed;
+
+  try {
+    await prisma.teamMember.create({ data: parsed });
+  } catch {
+    return { error: "That X handle is already used by another member." };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/log");
+
+  return { ok: true };
+}
+
+export async function updateMemberAction(
+  memberId: string,
+  _prev: MemberFormState,
+  formData: FormData
+): Promise<MemberFormState> {
+  const parsed = parseMemberFields(formData);
+  if ("error" in parsed) return parsed;
+
+  try {
+    await prisma.teamMember.update({ where: { id: memberId }, data: parsed });
+  } catch {
+    return { error: "That X handle is already used by another member." };
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/log");
+
+  return { ok: true };
+}
+
+// Members are never hard-deleted — "removing" one sets active: false so
+// their past posts, reactions, and streak history stay intact. Toggling
+// back to true "reactivates" them, same as the original data/team.ts seed
+// script's semantics.
+export async function setMemberActiveAction(memberId: string, active: boolean) {
+  if (!memberId) return;
+  await prisma.teamMember.update({ where: { id: memberId }, data: { active } });
+
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/log");
+}

@@ -4,6 +4,7 @@ import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { logPostAction, type LogPostState } from "@/app/actions";
 import { useIdentity } from "@/components/identity";
+import { PostingAsBadge } from "@/components/PostingAsBadge";
 import type { MemberOption } from "@/components/Chrome";
 
 function todayInputValue() {
@@ -13,7 +14,7 @@ function todayInputValue() {
 }
 
 export function LogPostForm({ members }: { members: MemberOption[] }) {
-  const { memberId, setMemberId } = useIdentity();
+  const { memberId } = useIdentity();
   const router = useRouter();
   const [state, action, pending] = useActionState<LogPostState, FormData>(
     logPostAction,
@@ -28,23 +29,8 @@ export function LogPostForm({ members }: { members: MemberOption[] }) {
 
   return (
     <form action={action} className="space-y-4">
-      <div>
-        <label className="mb-1 block text-sm font-medium">Who are you?</label>
-        <select
-          name="memberId"
-          value={memberId}
-          onChange={(e) => setMemberId(e.target.value)}
-          required
-          className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm"
-        >
-          <option value="">Select your name…</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      <input type="hidden" name="memberId" value={memberId} />
+      <PostingAsBadge members={members} />
 
       <div>
         <label className="mb-1 block text-sm font-medium">Post URL</label>
@@ -82,7 +68,7 @@ export function LogPostForm({ members }: { members: MemberOption[] }) {
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !memberId}
         className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
       >
         {pending ? "Logging…" : "Log post"}

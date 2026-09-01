@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Feed" },
   { href: "/log", label: "Log a post" },
   { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/settings", label: "Settings" },
 ];
 
 function IdentitySelector({ members }: { members: MemberOption[] }) {
@@ -18,23 +19,41 @@ function IdentitySelector({ members }: { members: MemberOption[] }) {
   const selected = members.find((m) => m.id === memberId);
 
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border bg-background py-1 pl-1 pr-3">
-      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-peri text-[10px] font-bold text-white">
+    <div
+      className={`flex items-center gap-2.5 rounded-full border-2 py-1.5 pl-1.5 pr-4 ${
+        selected ? "border-accent/35 bg-accent/5" : "border-accent/50 bg-accent/10"
+      }`}
+    >
+      <div
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+        style={{ backgroundColor: selected ? "var(--peri)" : "var(--accent)" }}
+      >
         {selected ? selected.name.charAt(0).toUpperCase() : "?"}
       </div>
-      <select
-        value={memberId}
-        onChange={(e) => setMemberId(e.target.value)}
-        className="bg-transparent text-sm font-semibold outline-none"
-        aria-label="I am"
-      >
-        <option value="">I am…</option>
-        {members.map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
-      </select>
+      <div className="flex flex-col leading-tight">
+        <span
+          className={`text-[9px] font-bold uppercase tracking-wide ${
+            selected ? "text-muted" : "text-accent"
+          }`}
+        >
+          {selected ? "Posting as" : "Who are you?"}
+        </span>
+        <select
+          value={memberId}
+          onChange={(e) => setMemberId(e.target.value)}
+          className={`bg-transparent text-sm font-extrabold outline-none ${
+            selected ? "" : "text-accent"
+          }`}
+          aria-label="Posting as"
+        >
+          <option value="">Select…</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

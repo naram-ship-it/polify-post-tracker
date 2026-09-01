@@ -6,3 +6,10 @@ export async function getActiveMembers() {
     orderBy: { name: "asc" },
   });
 }
+
+// All members (active and inactive) for the Settings page.
+export async function getAllMembers() {
+  return prisma.teamMember.findMany({
+    orderBy: [{ active: "desc" }, { name: "asc" }],
+  });
+}
