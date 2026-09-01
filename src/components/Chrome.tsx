@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { IdentityProvider, useIdentity } from "@/components/identity";
 
 export type MemberOption = { id: string; name: string };
@@ -9,7 +9,7 @@ export type MemberOption = { id: string; name: string };
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/", label: "Feed" },
-  { href: "/log", label: "Log a post" },
+  { href: "/quests", label: "🎯 Quests" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/settings", label: "Settings" },
 ];
@@ -60,8 +60,6 @@ function IdentitySelector({ members }: { members: MemberOption[] }) {
 
 function Sidebar() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const isQuestsTab = pathname === "/leaderboard" && searchParams.get("tab") === "quests";
 
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card p-4 sm:flex">
@@ -77,7 +75,7 @@ function Sidebar() {
 
       <nav className="mt-6 flex flex-col gap-0.5">
         {NAV_ITEMS.map((item) => {
-          const active = item.href === "/" ? pathname === "/" : pathname === item.href && !isQuestsTab;
+          const active = item.href === "/" ? pathname === "/" : pathname === item.href;
           return (
             <Link
               key={item.href}
@@ -90,14 +88,6 @@ function Sidebar() {
             </Link>
           );
         })}
-        <Link
-          href="/leaderboard?tab=quests"
-          className={`rounded-lg px-2.5 py-1.5 pl-8 text-xs ${
-            isQuestsTab ? "font-bold text-accent" : "text-muted hover:bg-black/5"
-          }`}
-        >
-          🎯 Quests
-        </Link>
       </nav>
 
       <div

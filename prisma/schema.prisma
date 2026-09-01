@@ -27,6 +27,11 @@ model TeamMember {
   id          String   @id @default(cuid())
   name        String
   xHandle     String?
+  // Freeform "@handle" used to address this person by name in Slack
+  // messages. Not a Slack user ID — the app only has an incoming webhook,
+  // not a Slack app install, so this renders as bold text (e.g. "@nimo"),
+  // not a real notifying mention.
+  slackHandle String?
   linkedinUrl String?
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -34,35 +39,88 @@ model TeamMember {
   // the default.
   weeklyTarget Int?
 
-  posts            Post[]
-  comments         Comment[]
-  questCompletions QuestCompletion[]
+  posts         Post[]
+  comments      Comment[]
+  questJoins    QuestJoin[]
+  questPosts    QuestPost[]
+  questEligible QuestParticipant[]
 
   @@unique([xHandle])
 }
 
-// A manually-defined challenge (e.g. "post on 3 different days this week").
-// No automatic verification — team members self-report via QuestCompletion,
-// same trust model as the rest of the app (no real login).
-model Quest {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  completions QuestCompletion[]
+enum QuestType {
+  STANDARD
+  PROMO
 }
 
-model QuestCompletion {
+// A manually-defined challenge (e.g. "post on 3 different days this week",
+// or "share the new case study"). No automatic verification — completion is
+// driven by members linking their own logged posts to the quest
+// (QuestPost), same trust model as the rest of the app (no real login).
+model Quest {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  type        QuestType @default(STANDARD)
+  // PROMO quests point at something specific to share.
+  linkUrl     String?
+  ctaLabel    String?
+  points      Int       @default(10)
+  // How many linked posts a member needs before the quest counts as done
+  // for them.
+  targetPosts Int       @default(1)
+  endsAt      DateTime?
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  // Empty = open to everyone (active members). Non-empty = only these
+  // members can see/join it.
+  participants QuestParticipant[]
+  joins        QuestJoin[]
+  questPosts   QuestPost[]
+}
+
+// Eligibility list for a "specific members" quest.
+model QuestParticipant {
+  id       String     @id @default(cuid())
+  quest    Quest      @relation(fields: [questId], references: [id], onDelete: Cascade)
+  questId  String
+  member   TeamMember @relation(fields: [memberId], references: [id])
+  memberId String
+
+  @@unique([questId, memberId])
+}
+
+// A member committing to a quest ("Join quest"). Being eligible never
+// creates this row on its own — only an explicit join does, which is what
+// puts the quest on that member's Dashboard.
+model QuestJoin {
   id          String     @id @default(cuid())
   quest       Quest      @relation(fields: [questId], references: [id], onDelete: Cascade)
   questId     String
   member      TeamMember @relation(fields: [memberId], references: [id])
   memberId    String
-  completedAt DateTime   @default(now())
+  joinedAt    DateTime   @default(now())
+  // Null until the member's linked-post count reaches Quest.targetPosts.
+  completedAt DateTime?
 
   @@unique([questId, memberId])
+}
+
+// Links one of a member's logged posts to a quest they've joined — this is
+// what "counts" toward Quest.targetPosts. Chosen by the member at log time
+// or attached afterwards; never auto-detected from post content.
+model QuestPost {
+  id        String     @id @default(cuid())
+  quest     Quest      @relation(fields: [questId], references: [id], onDelete: Cascade)
+  questId   String
+  member    TeamMember @relation(fields: [memberId], references: [id])
+  memberId  String
+  post      Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  postId    String
+  createdAt DateTime   @default(now())
+
+  @@unique([questId, postId])
 }
 
 model Post {
@@ -81,7 +139,8 @@ model Post {
   // ever true at a time (enforced in the action, not the schema).
   isPostOfWeek Boolean @default(false)
 
-  comments Comment[]
+  comments   Comment[]
+  questPosts QuestPost[]
 
   @@index([postedAt])
   @@index([memberId])
@@ -93,6 +152,14 @@ model AppSettings {
   id                  Int @id @default(1)
   // Weekly post target used for anyone without their own TeamMember.weeklyTarget.
   defaultWeeklyTarget Int @default(1)
+
+  // Slack notification toggles. Quest deadline reminders has no automation
+  // wired up yet (the trigger cadence is still an open decision) — the
+  // toggle exists so the setting has a home once it does.
+  notifyNewQuest       Boolean @default(true)
+  notifyPromotion      Boolean @default(true)
+  notifyWeeklyQuota    Boolean @default(true)
+  notifyQuestDeadline  Boolean @default(false)
 }
 
 model Comment {

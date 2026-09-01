@@ -13,6 +13,7 @@ export type Member = {
   id: string;
   name: string;
   xHandle: string | null;
+  slackHandle: string | null;
   active: boolean;
 };
 
@@ -50,6 +51,15 @@ function AddMemberForm() {
         <input
           type="text"
           name="xHandle"
+          placeholder="@jordan"
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="min-w-[160px] flex-1">
+        <label className="mb-1 block text-xs font-semibold text-muted">Slack handle (optional)</label>
+        <input
+          type="text"
+          name="slackHandle"
           placeholder="@jordan"
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
@@ -104,6 +114,16 @@ function EditMemberForm({ member, onDone }: { member: Member; onDone: () => void
           type="text"
           name="xHandle"
           defaultValue={member.xHandle ?? ""}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+        />
+      </div>
+      <div className="min-w-[140px] flex-1">
+        <label className="mb-1 block text-xs font-semibold text-muted">Slack handle</label>
+        <input
+          type="text"
+          name="slackHandle"
+          defaultValue={member.slackHandle ?? ""}
+          placeholder="@jordan"
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
         />
       </div>
@@ -164,7 +184,10 @@ function MemberRow({ member }: { member: Member }) {
             {member.active ? "Active" : "Inactive"}
           </span>
         </div>
-        <div className="text-xs text-muted">{member.xHandle ? `@${member.xHandle}` : "No X handle"}</div>
+        <div className="flex flex-wrap gap-x-3 text-xs text-muted">
+          <span>{member.xHandle ? `X: @${member.xHandle}` : "No X handle"}</span>
+          <span>{member.slackHandle ? `Slack: ${member.slackHandle}` : "No Slack handle"}</span>
+        </div>
       </div>
       <div className="flex shrink-0 gap-2">
         <button
@@ -203,6 +226,10 @@ export function MembersPanel({ members }: { members: Member[] }) {
       <p className="mt-3 text-xs text-muted">
         Removing a member keeps their past posts and stats intact — they just drop out of the
         &quot;posting as&quot; picker until reactivated.
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        Slack handle is used to address someone by name in a notification — it&apos;s not a real
+        Slack mention (that needs a Slack app install, not just a webhook), so it won&apos;t page them.
       </p>
     </div>
   );

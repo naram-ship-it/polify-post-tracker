@@ -1,14 +1,21 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ReactionType } from "@prisma/client";
+import { ReactionType, QuestType } from "@prisma/client";
 import { createManualPost, isXUrl } from "@/lib/posts";
 import { addComment } from "@/lib/comments";
 import { prisma } from "@/lib/prisma";
 import { fetchTweetText } from "@/lib/xEmbed";
-import { setDefaultWeeklyTarget } from "@/lib/settings";
-import { sendSlackMessage } from "@/lib/slack";
-import { createQuest, setQuestActive, deleteQuest, toggleQuestCompletion } from "@/lib/quests";
+import { setDefaultWeeklyTarget, setNotificationSetting, getNotificationSettings, type NotificationSettings } from "@/lib/settings";
+import { sendSlackMessage, appUrl } from "@/lib/slack";
+import {
+  createQuest,
+  setQuestActive,
+  deleteQuest,
+  joinQuest,
+  attachPostToQuest,
+  type CreateQuestInput,
+} from "@/lib/quests";
 
 function parsePostFields(formData: FormData) {
   const memberId = String(formData.get("memberId") || "");
@@ -33,29 +40,6 @@ function notifyNewPost(memberName: string, url: string, note?: string | null) {
   const lines = [`<!channel> 📣 *${memberName}* just logged a new post on X!`, url];
   if (note) lines.push(`_"${note}"_`);
   return sendSlackMessage(lines.join("\n"));
-}
-
-export type LogPostState = { error?: string; ok?: boolean };
-
-export async function logPostAction(
-  _prev: LogPostState,
-  formData: FormData
-): Promise<LogPostState> {
-  const parsed = parsePostFields(formData);
-  if ("error" in parsed) return parsed;
-
-  const member = await prisma.teamMember.findUnique({ where: { id: parsed.memberId } });
-  if (!member || !member.active) return { error: "Unknown team member." };
-
-  const previewText = await fetchTweetText(parsed.url);
-
-  await createManualPost({ ...parsed, previewText });
-  await notifyNewPost(member.name, parsed.url, parsed.note);
-
-  revalidatePath("/");
-  revalidatePath("/leaderboard");
-
-  return { ok: true };
 }
 
 export type EditPostState = { error?: string; ok?: boolean };
@@ -136,6 +120,7 @@ export async function quickLogPostAction(
 ): Promise<QuickLogState> {
   const memberId = String(formData.get("memberId") || "");
   const url = String(formData.get("url") || "").trim();
+  const questId = String(formData.get("questId") || "").trim();
 
   if (!memberId) return { error: "Pick who you are from the dropdown at the top first." };
   if (!isXUrl(url)) {
@@ -147,7 +132,7 @@ export async function quickLogPostAction(
 
   const previewText = await fetchTweetText(url);
 
-  await createManualPost({
+  const post = await createManualPost({
     memberId,
     url,
     postedAt: new Date(),
@@ -156,8 +141,14 @@ export async function quickLogPostAction(
   });
   await notifyNewPost(member.name, url);
 
+  if (questId) {
+    await attachPostToQuest(post.id, memberId, questId);
+  }
+
   revalidatePath("/");
   revalidatePath("/leaderboard");
+  revalidatePath("/quests");
+  revalidatePath("/dashboard");
 
   return { ok: true };
 }
@@ -245,18 +236,156 @@ export async function updateMemberTargetAction(
 
 export type QuestFormState = { error?: string; ok?: boolean };
 
+function questSlackMessage(quest: {
+  title: string;
+  description: string | null;
+  type: QuestType;
+  points: number;
+  linkUrl: string | null;
+  ctaLabel: string | null;
+}, audienceHandles: string[]) {
+  const lines: string[] = [];
+  if (quest.type === QuestType.PROMO) {
+    lines.push("📣 *New post to support*");
+    if (quest.description) lines.push(quest.description);
+    if (quest.linkUrl) lines.push(`${quest.ctaLabel || "Open post"}: ${quest.linkUrl}`);
+  } else {
+    lines.push("🎯 *New Polify Quest*");
+    lines.push(quest.title);
+  }
+  lines.push(`+${quest.points} points`);
+  if (audienceHandles.length) lines.push(`For: ${audienceHandles.join(" ")}`);
+  lines.push(`Open in Polify: ${appUrl("/quests")}`);
+  return lines.join("\n");
+}
+
+async function notifyQuestCreated(
+  quest: {
+    title: string;
+    description: string | null;
+    type: QuestType;
+    points: number;
+    linkUrl: string | null;
+    ctaLabel: string | null;
+  },
+  memberIds: string[]
+) {
+  let audienceHandles: string[] = [];
+  if (memberIds.length) {
+    const members = await prisma.teamMember.findMany({ where: { id: { in: memberIds } } });
+    audienceHandles = members.map((m) => (m.slackHandle ? `*${m.slackHandle}*` : `*${m.name}*`));
+  }
+  await sendSlackMessage(questSlackMessage(quest, audienceHandles));
+}
+
+function parseQuestFields(formData: FormData) {
+  const title = String(formData.get("title") || "").trim();
+  const description = String(formData.get("description") || "").trim();
+  const type = formData.get("type") === "promo" ? QuestType.PROMO : QuestType.STANDARD;
+  const linkUrl = String(formData.get("linkUrl") || "").trim();
+  const ctaLabel = String(formData.get("ctaLabel") || "").trim();
+  const pointsRaw = Number.parseInt(String(formData.get("points") || ""), 10);
+  const points = Number.isFinite(pointsRaw) && pointsRaw > 0 ? pointsRaw : 10;
+  const targetRaw = Number.parseInt(String(formData.get("targetPosts") || ""), 10);
+  const targetPosts = Number.isFinite(targetRaw) && targetRaw > 0 ? targetRaw : 1;
+  const daysRaw = Number.parseInt(String(formData.get("endsInDays") || ""), 10);
+  const endsInDays = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : null;
+  const audience = formData.get("audience") === "specific" ? "specific" : "everyone";
+  const memberIds = audience === "specific" ? formData.getAll("memberIds").map(String).filter(Boolean) : [];
+  const notifySlack = formData.get("notifySlack") === "on";
+
+  if (!title) return { error: "Give the quest a title." } as const;
+  if (title.length > 120) return { error: "Keep the title under 120 characters." } as const;
+  if (audience === "specific" && memberIds.length === 0) {
+    return { error: "Pick at least one member, or choose Everyone." } as const;
+  }
+  if (type === QuestType.PROMO && !linkUrl) {
+    return { error: "Promotional quests need a link to attach." } as const;
+  }
+
+  return {
+    input: {
+      title,
+      description: description || null,
+      type,
+      linkUrl: linkUrl || null,
+      ctaLabel: ctaLabel || null,
+      points,
+      targetPosts,
+      endsInDays,
+      memberIds,
+    } satisfies CreateQuestInput,
+    notifySlack,
+  } as const;
+}
+
 export async function createQuestAction(
   _prev: QuestFormState,
   formData: FormData
 ): Promise<QuestFormState> {
-  const title = String(formData.get("title") || "").trim();
-  const description = String(formData.get("description") || "").trim();
+  const parsed = parseQuestFields(formData);
+  if ("error" in parsed) return parsed;
 
-  if (!title) return { error: "Give the quest a title." };
-  if (title.length > 120) return { error: "Keep the title under 120 characters." };
+  const quest = await createQuest(parsed.input);
 
-  await createQuest(title, description || null);
-  revalidatePath("/leaderboard");
+  if (parsed.notifySlack) {
+    const settings = await getNotificationSettings();
+    const setting: keyof NotificationSettings =
+      quest.type === QuestType.PROMO ? "notifyPromotion" : "notifyNewQuest";
+    if (settings[setting]) {
+      await notifyQuestCreated(quest, parsed.input.memberIds);
+    }
+  }
+
+  revalidatePath("/quests");
+  revalidatePath("/dashboard");
+
+  return { ok: true };
+}
+
+export type PushPromotionState = { error?: string; ok?: boolean };
+
+// Push Promotion is a fast path into the same quest system — it creates a
+// PROMO-type quest with Slack notify on by default, so there's one engine
+// and one place quests live, rather than a parallel feature.
+export async function pushPromotionAction(
+  _prev: PushPromotionState,
+  formData: FormData
+): Promise<PushPromotionState> {
+  const linkUrl = String(formData.get("linkUrl") || "").trim();
+  const message = String(formData.get("message") || "").trim();
+  const pointsRaw = Number.parseInt(String(formData.get("points") || ""), 10);
+  const points = Number.isFinite(pointsRaw) && pointsRaw > 0 ? pointsRaw : 50;
+  const audience = formData.get("audience") === "specific" ? "specific" : "everyone";
+  const memberIds = audience === "specific" ? formData.getAll("memberIds").map(String).filter(Boolean) : [];
+  const notifySlack = formData.get("notifySlack") !== "off";
+
+  if (!linkUrl) return { error: "Paste a link to promote." };
+  if (audience === "specific" && memberIds.length === 0) {
+    return { error: "Pick at least one member, or choose Everyone." };
+  }
+
+  const quest = await createQuest({
+    title: "Promote this post",
+    description: message || null,
+    type: QuestType.PROMO,
+    linkUrl,
+    ctaLabel: "Open post",
+    points,
+    targetPosts: 1,
+    endsInDays: null,
+    memberIds,
+  });
+
+  if (notifySlack) {
+    const settings = await getNotificationSettings();
+    if (settings.notifyPromotion) {
+      await notifyQuestCreated(quest, memberIds);
+    }
+  }
+
+  revalidatePath("/quests");
+  revalidatePath("/dashboard");
 
   return { ok: true };
 }
@@ -264,22 +393,36 @@ export async function createQuestAction(
 export async function archiveQuestAction(questId: string) {
   if (!questId) return;
   await setQuestActive(questId, false);
-  revalidatePath("/leaderboard");
+  revalidatePath("/quests");
 }
 
 export async function removeQuestAction(questId: string) {
   if (!questId) return;
   await deleteQuest(questId);
-  revalidatePath("/leaderboard");
+  revalidatePath("/quests");
 }
 
-export async function toggleQuestCompletionAction(questId: string, memberId: string) {
-  if (!questId || !memberId) return;
-  const member = await prisma.teamMember.findUnique({ where: { id: memberId } });
-  if (!member) return;
+export type JoinQuestState = { error?: string; ok?: boolean };
 
-  await toggleQuestCompletion(questId, memberId);
-  revalidatePath("/leaderboard");
+export async function joinQuestAction(
+  questId: string,
+  memberId: string
+): Promise<JoinQuestState> {
+  if (!questId || !memberId) return {};
+  const result = await joinQuest(questId, memberId);
+  if (result.error) return result;
+
+  revalidatePath("/quests");
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function updateNotificationSettingAction(
+  key: keyof NotificationSettings,
+  value: boolean
+) {
+  await setNotificationSetting(key, value);
+  revalidatePath("/settings");
 }
 
 export type MemberFormState = { error?: string; ok?: boolean };
@@ -287,11 +430,13 @@ export type MemberFormState = { error?: string; ok?: boolean };
 function parseMemberFields(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const xHandle = String(formData.get("xHandle") || "").trim().replace(/^@/, "");
+  const slackHandleRaw = String(formData.get("slackHandle") || "").trim();
+  const slackHandle = slackHandleRaw ? `@${slackHandleRaw.replace(/^@/, "")}` : null;
 
   if (!name) return { error: "Name is required." } as const;
   if (name.length > 60) return { error: "Keep the name under 60 characters." } as const;
 
-  return { name, xHandle: xHandle || null } as const;
+  return { name, xHandle: xHandle || null, slackHandle } as const;
 }
 
 export async function createMemberAction(
@@ -309,7 +454,6 @@ export async function createMemberAction(
 
   revalidatePath("/settings");
   revalidatePath("/");
-  revalidatePath("/log");
 
   return { ok: true };
 }
@@ -330,7 +474,6 @@ export async function updateMemberAction(
 
   revalidatePath("/settings");
   revalidatePath("/");
-  revalidatePath("/log");
 
   return { ok: true };
 }
@@ -345,5 +488,4 @@ export async function setMemberActiveAction(memberId: string, active: boolean) {
 
   revalidatePath("/settings");
   revalidatePath("/");
-  revalidatePath("/log");
 }

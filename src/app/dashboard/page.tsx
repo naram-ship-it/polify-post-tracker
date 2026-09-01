@@ -8,8 +8,8 @@ import {
   getDaysPostedThisWeekByMember,
 } from "@/lib/posts";
 import { getStreaks } from "@/lib/streaks";
+import { getActiveQuestJoinsByMemberMap, getQuestProgress } from "@/lib/quests";
 import { countEngagementForRange } from "@/lib/comments";
-import { getQuestProgress } from "@/lib/quests";
 import { startOfWeek, endOfWeek, toDateInputValue } from "@/lib/week";
 import { PersonalDashboard } from "@/components/dashboard/PersonalDashboard";
 import { StatCards } from "@/components/dashboard/StatCards";
@@ -39,6 +39,7 @@ export default async function DashboardPage() {
     questProgress,
     recentPostsByMemberId,
     daysPostedByMemberId,
+    activeQuestsByMemberId,
   ] = await Promise.all([
     getStatsForRange(start, end),
     getStreaks(),
@@ -49,6 +50,7 @@ export default async function DashboardPage() {
     getQuestProgress(),
     getRecentPostsByMemberMap(RECENT_POSTS_PER_MEMBER),
     getDaysPostedThisWeekByMember(),
+    getActiveQuestJoinsByMemberMap(),
   ]);
 
   const postsThisPeriod = stats.reduce((sum, s) => sum + s.total, 0);
@@ -69,7 +71,7 @@ export default async function DashboardPage() {
           </p>
         </div>
         <Link
-          href="/log"
+          href="/"
           className="shrink-0 rounded-lg bg-foreground px-4 py-2 text-sm font-semibold text-background"
         >
           + Log a post
@@ -82,6 +84,7 @@ export default async function DashboardPage() {
           streaksByMemberId={streaksByMemberId}
           recentPostsByMemberId={recentPostsByMemberId}
           daysPostedByMemberId={daysPostedByMemberId}
+          activeQuestsByMemberId={activeQuestsByMemberId}
         />
 
         <div className="my-7 flex items-center gap-3">

@@ -1,10 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useIdentity } from "@/components/identity";
 import { avatarColor } from "@/lib/avatarColor";
 import { exampleReach, formatCompact } from "@/lib/exampleMetrics";
 import { POINTS_PER_POST, type TopPost } from "@/lib/posts";
 import type { MemberStreak } from "@/lib/streaks";
+import type { ActiveQuestJoin } from "@/lib/quests";
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
@@ -12,16 +14,26 @@ function formatDate(d: Date) {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+function daysLeftLabel(endsAt: Date | null) {
+  if (!endsAt) return null;
+  const ms = new Date(endsAt).getTime() - Date.now();
+  const days = Math.ceil(ms / (24 * 60 * 60 * 1000));
+  if (days <= 0) return "Ends today";
+  return `${days} day${days === 1 ? "" : "s"} left`;
+}
+
 export function PersonalDashboard({
   postsThisWeekByMemberId,
   streaksByMemberId,
   recentPostsByMemberId,
   daysPostedByMemberId,
+  activeQuestsByMemberId,
 }: {
   postsThisWeekByMemberId: Map<string, number>;
   streaksByMemberId: Map<string, MemberStreak>;
   recentPostsByMemberId: Map<string, TopPost[]>;
   daysPostedByMemberId: Map<string, boolean[]>;
+  activeQuestsByMemberId: Map<string, ActiveQuestJoin[]>;
 }) {
   const { memberId } = useIdentity();
 
@@ -43,6 +55,7 @@ export function PersonalDashboard({
   const closeToMissing = streak?.closeToMissing ?? false;
   const streakWeeks = streak?.streak ?? 0;
   const recentPosts = recentPostsByMemberId.get(memberId) ?? [];
+  const activeQuests = activeQuestsByMemberId.get(memberId) ?? [];
   const daysPosted = daysPostedByMemberId.get(memberId) ?? Array(7).fill(false);
   const progressPct = Math.min(100, Math.round((postsThisWeek / Math.max(1, target)) * 100));
   const todayIndex = (() => {
@@ -140,6 +153,51 @@ export function PersonalDashboard({
           ))}
         </div>
       </div>
+
+      {/* Active quests */}
+      <h3 className="mb-2.5 mt-5 text-[15px] font-extrabold">🎯 Active Quests</h3>
+      {activeQuests.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted">
+          No active quests yet — join one on the{" "}
+          <Link href="/quests" className="font-bold text-accent">
+            Quests page
+          </Link>
+          .
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {activeQuests.map((q) => {
+            const deadline = daysLeftLabel(q.endsAt);
+            const pct = Math.min(100, Math.round((q.progress / q.target) * 100));
+            return (
+              <div key={q.questId} className="rounded-2xl border border-border bg-card p-3.5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <h4 className="font-bold">{q.title}</h4>
+                  <span className="shrink-0 font-mono text-xs font-bold text-gold">+{q.points} pts</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted">
+                  {deadline && <span>⏳ {deadline}</span>}
+                  <span>
+                    Progress:{" "}
+                    <b className="font-mono text-foreground">
+                      {q.progress}/{q.target}
+                    </b>
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-accent to-gold"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <Link href="/quests" className="mt-2.5 inline-block text-xs font-bold text-accent">
+                  View quest →
+                </Link>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Recent posts */}
       <h3 className="mb-2.5 mt-5 text-[15px] font-extrabold">🗂️ Your recent posts</h3>

@@ -1,19 +1,26 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
-import Link from "next/link";
 import { quickLogPostAction, type QuickLogState } from "@/app/actions";
 import { useIdentity } from "@/components/identity";
 import { PostingAsBadge } from "@/components/PostingAsBadge";
 import type { MemberOption } from "@/components/Chrome";
+import type { ActiveQuestJoin } from "@/lib/quests";
 
-export function QuickAddBar({ members }: { members: MemberOption[] }) {
+export function QuickAddBar({
+  members,
+  activeQuestsByMemberId,
+}: {
+  members: MemberOption[];
+  activeQuestsByMemberId: Map<string, ActiveQuestJoin[]>;
+}) {
   const { memberId } = useIdentity();
   const formRef = useRef<HTMLFormElement>(null);
   const [state, action, pending] = useActionState<QuickLogState, FormData>(
     quickLogPostAction,
     {}
   );
+  const myQuests = memberId ? activeQuestsByMemberId.get(memberId) ?? [] : [];
 
   useEffect(() => {
     // Depend on `state` itself, not `state.ok` — useActionState returns a
@@ -45,17 +52,28 @@ export function QuickAddBar({ members }: { members: MemberOption[] }) {
           >
             {pending ? "Posting…" : "Post"}
           </button>
+          {myQuests.length > 0 && (
+            <div className="w-full">
+              <label className="mb-1 block text-xs font-semibold text-muted">
+                Apply to a quest (optional)
+              </label>
+              <select
+                name="questId"
+                defaultValue=""
+                className="w-full max-w-xs rounded-md border border-border bg-background px-3 py-1.5 text-xs"
+              >
+                <option value="">None</option>
+                {myQuests.map((q) => (
+                  <option key={q.questId} value={q.questId}>
+                    {q.title} ({q.progress}/{q.target})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </form>
         {state.error && <p className="mt-1.5 text-xs text-red-600">{state.error}</p>}
-        {state.ok && (
-          <p className="mt-1.5 text-xs text-muted">
-            Logged. Want to backdate it or add a note?{" "}
-            <Link href="/log" className="text-accent underline">
-              Use the full form
-            </Link>
-            .
-          </p>
-        )}
+        {state.ok && <p className="mt-1.5 text-xs text-muted">Logged.</p>}
       </div>
     </div>
   );
