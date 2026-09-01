@@ -28,7 +28,9 @@ function parsePostFields(formData: FormData) {
 }
 
 function notifyNewPost(memberName: string, url: string, note?: string | null) {
-  const lines = [`📣 *${memberName}* just logged a new post on X!`, url];
+  // <!channel> is Slack's actual ping syntax — a literal "@channel" in the
+  // text does not notify anyone.
+  const lines = [`<!channel> 📣 *${memberName}* just logged a new post on X!`, url];
   if (note) lines.push(`_"${note}"_`);
   return sendSlackMessage(lines.join("\n"));
 }
