@@ -11,6 +11,14 @@ export function appUrl(path: string): string {
 }
 
 export async function sendSlackMessage(text: string): Promise<void> {
+  // Master kill switch: set SLACK_PAUSED=1 to silence every Slack message
+  // (new-post pings, quests, digests, reminders) without touching the
+  // webhook itself. Unset it to resume.
+  if (process.env.SLACK_PAUSED === "1") {
+    console.warn("SLACK_PAUSED=1 — skipping Slack message");
+    return;
+  }
+
   const url = process.env.SLACK_WEBHOOK_URL;
   if (!url) {
     console.warn("SLACK_WEBHOOK_URL not set — skipping Slack message:", text);

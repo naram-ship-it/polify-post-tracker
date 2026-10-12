@@ -1,12 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/weekly-digest",
-      "schedule": "0 7 * * 1"
-    },
-    {
-      "path": "/api/cron/midweek-reminder",
-      "schedule": "0 8 * * 3"
-    }
-  ]
+  "crons": []
 }
